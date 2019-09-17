@@ -16,24 +16,12 @@ import (
 	"time"
 )
 
-type Config struct {
-	Cookie string `json:"cookie"`
-	SCKey  string `json:"sc_key"`
-	FakeIP string `json:"fake_id"`
-}
-
 var (
 	Cookie string
 	SCKey  string
 	FakeIP string
 
 	client *http.Client
-)
-
-const (
-	UserAgent  = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.119 Safari/537.36"
-	Referer    = "https://www.smzdm.com"
-	CheckInURL = "https://zhiyou.smzdm.com/user/checkin/jsonp_checkin"
 )
 
 func init() {
@@ -49,7 +37,7 @@ func init() {
 func main() {
 	configs := getConfigs()
 	if len(configs) == 0 {
-		fmt.Fprintln(os.Stderr, "no config provided.")
+		_, _ = fmt.Fprintln(os.Stderr, "no config provided.")
 		os.Exit(1)
 	}
 
@@ -89,14 +77,14 @@ func getConfigs() []Config {
 				if err == nil {
 					configs = append(configs, config)
 				}
-				f.Close()
+				_ = f.Close()
 			}
 		}
 	}
 	return configs
 }
 
-func prepareRequestHeaders(req *http.Request) {
+func setRequestHeaders(req *http.Request) {
 	req.Header.Set("User-Agent", UserAgent)
 	req.Header.Set("Referer", Referer)
 	req.Header.Set("X-Forwarded-For", FakeIP)
@@ -105,16 +93,18 @@ func prepareRequestHeaders(req *http.Request) {
 func visit() error {
 	log.Printf("visit the homepage: %s.", Referer)
 	req, _ := http.NewRequest(http.MethodGet, Referer, nil)
-	prepareRequestHeaders(req)
+	setRequestHeaders(req)
 	resp, err := client.Do(req)
+	defer resp.Body.Close()
 	if err != nil {
 		return fmt.Errorf("fail to send visit request: %s", err.Error())
 	}
-	resp.Body.Close()
 	return nil
 }
 
 func checkIn() error {
+	result := CheckInResult{}
+
 	log.Printf("check in account: %s.", CheckInURL)
 	u, err := url.Parse(CheckInURL)
 	if err != nil {
@@ -127,7 +117,8 @@ func checkIn() error {
 	q.Set("_", strconv.FormatInt(time.Now().Unix(), 10))
 	u.RawQuery = q.Encode()
 	req, _ := http.NewRequest(http.MethodGet, u.String(), nil)
-	prepareRequestHeaders(req)
+
+	setRequestHeaders(req)
 	req.Header.Set("Cookie", Cookie)
 	resp, err := client.Do(req)
 	if err != nil {
@@ -137,20 +128,6 @@ func checkIn() error {
 	b, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("fail to read data from check in response body: %s", err.Error())
-	}
-
-	var result struct {
-		ErrorCode int    `json:"error_code"`
-		ErrorMsg  string `json:"error_msg"`
-		Data      struct {
-			AddPoint   int             `json:"add_point"`
-			CheckInNum json.RawMessage `json:"checkin_num"`
-			Point      int             `json:"point"`
-			Exp        int             `json:"exp"`
-			Gold       int             `json:"gold"`
-			Prestige   int             `json:"prestige"`
-			Rank       int             `json:"rank"`
-		} `json:"data"`
 	}
 
 	err = json.Unmarshal(b[len(key)+1:len(b)-1], &result)
@@ -169,6 +146,8 @@ func checkIn() error {
 }
 
 func notify(msg string) error {
+	result := &NotifyResult{}
+
 	if len(SCKey) == 0 {
 		log.Println("keep silent, no notification will be sent.")
 		return nil
@@ -179,7 +158,7 @@ func notify(msg string) error {
 	}
 	q := u.Query()
 	q.Set("text", "什么值得买签到")
-	q.Set("desp", msg)
+	q.Set("message", msg)
 	u.RawQuery = q.Encode()
 	req, _ := http.NewRequest(http.MethodPost, u.String(), nil)
 	resp, err := client.Do(req)
@@ -188,16 +167,11 @@ func notify(msg string) error {
 	}
 	defer resp.Body.Close()
 
-	var result struct {
-		ErrNo  int    `json:"errno"`
-		ErrMsg string `json:"errmsg"`
-	}
-
 	b, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("fail to read data from check in response: %s", err.Error())
 	}
-	err = json.Unmarshal(b, &result)
+	err = json.Unmarshal(b, result)
 	if err != nil {
 		return fmt.Errorf("fail to unmarshal notify json: %s -> %s", string(b), err.Error())
 	}

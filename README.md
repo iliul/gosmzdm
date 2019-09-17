@@ -1,5 +1,7 @@
 # Usage
 
+[![Build Status](https://travis-ci.com/iliul/gosmzdm.svg?branch=master)](https://travis-ci.com/iliul/gosmzdm)
+
 Run `smzdm` and all `*.json` files under the working directory will be parsed to find the accounts.
 
 ## Cookie
@@ -9,5 +11,4 @@ Run `smzdm` and all `*.json` files under the working directory will be parsed to
 ## Server酱
 
 登录 http://sc.ftqq.com/?c=code 申请 SCKEY 后填入到 config.json ，用于签到结果微信推送
-
 
